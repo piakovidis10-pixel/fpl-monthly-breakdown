@@ -19,6 +19,8 @@
     --seq-300: #6da7ec; --seq-350: #5598e7; --seq-400: #3987e5; --seq-450: #2a78d6;
     --seq-500: #256abf; --seq-550: #1c5cab; --seq-600: #184f95; --seq-650: #104281;
     --seq-700: #0d366b;
+    --status-good:     #0ca30c;
+    --status-critical: #d03b3b;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -69,9 +71,20 @@
   .state.error { color: var(--text-primary); }
   .state .detail { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
 
-  .legend { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; color: var(--text-muted); font-size: 12px; }
-  .legend .ramp { display: flex; height: 10px; width: 120px; border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
-  .legend .ramp span { flex: 1; }
+  .controls { display: flex; align-items: center; gap: 8px; margin: 18px 0 12px; flex-wrap: wrap; }
+  .controls label { color: var(--text-secondary); font-size: 12px; }
+  .controls select {
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 8px; font-size: 13px;
+  }
+
+  .legend { display: flex; align-items: center; gap: 14px; margin: 0 0 10px; color: var(--text-secondary); font-size: 12px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .legend .swatch.good { background: var(--status-good); }
+  .legend .swatch.critical { background: var(--status-critical); }
+  .legend .swatch.mid { background: var(--surface-2); border: 1px solid var(--border); }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); }
   table { border-collapse: collapse; width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
@@ -83,6 +96,7 @@
   }
   thead th.col-manager { text-align: left; position: sticky; left: 0; z-index: 2; }
   thead th.col-total { color: var(--text-primary); }
+  thead th.sorted { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
   tbody td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--gridline); white-space: nowrap; position: relative; }
   tbody tr:last-child td { border-bottom: none; }
   td.col-manager {
@@ -95,13 +109,15 @@
     display: inline-block; width: 20px; color: var(--text-muted); font-size: 12px; margin-right: 6px;
   }
   td.col-total { font-weight: 700; background: var(--surface-2); border-left: 1px solid var(--gridline); }
-  td.cell { border-radius: 4px; }
-  td.cell.leader { box-shadow: inset 0 0 0 2px var(--text-primary); border-radius: 6px; }
+  td.cell { border-radius: 4px; font-weight: 600; }
+  td.cell.tier-mid { font-weight: 400; color: var(--text-primary); }
+  td.cell.tier-top { background: var(--status-good); color: #ffffff; }
+  td.cell.tier-bottom { background: var(--status-critical); color: #ffffff; }
   td.cell .badge {
     position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
-    opacity: 0.85;
+    opacity: 0.9;
   }
-  td.cell.empty { color: var(--text-muted); }
+  td.cell.empty { color: var(--text-muted); font-weight: 400; }
 
   footer { margin-top: 18px; color: var(--text-muted); font-size: 12px; }
   footer a { color: inherit; }
@@ -120,6 +136,13 @@
   </form>
   <p class="hint">Find your league ID in its URL: draft.premierleague.com/league/<strong>12345</strong>/standings</p>
 
+  <div class="controls" id="controls" hidden>
+    <label for="sort-select">Rank teams by</label>
+    <select id="sort-select">
+      <option value="total">Season total</option>
+    </select>
+  </div>
+
   <div id="content"></div>
 
   <footer>
@@ -133,9 +156,11 @@ const content = document.getElementById('content');
 const leagueNameEl = document.getElementById('league-name');
 const form = document.getElementById('league-form');
 const input = document.getElementById('league-input');
+const controls = document.getElementById('controls');
+const sortSelect = document.getElementById('sort-select');
 
-const SEQ_STEPS = ['--seq-150', '--seq-250', '--seq-350', '--seq-450', '--seq-550', '--seq-650'];
-const DARK_TEXT_FROM_STEP = 3; // steps[3..] (450+) get white text
+let currentData = null;
+let sortKey = 'total';
 
 function getLeagueId() {
   const url = new URL(window.location.href);
@@ -157,61 +182,98 @@ function trophyBadge() {
     '</svg>';
 }
 
+function downBadge() {
+  return '<svg class="badge" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<path d="M12 5v11M7 12l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+}
+
+// Rank every manager within a single month's points and bucket into
+// top scorer / bottom two / everyone else, so a tier is never eyeballed off
+// a continuous colour, only assigned three fixed ways.
+function tiersForMonth(managers, monthKey) {
+  const ranked = managers
+    .map((mgr) => ({ id: mgr.leagueEntryId, v: mgr.monthly[monthKey] }))
+    .filter((e) => e.v != null)
+    .sort((a, b) => b.v - a.v);
+  const n = ranked.length;
+  const bottomCount = n >= 2 ? Math.min(2, n - 1) : 0;
+  const tiers = new Map();
+  ranked.forEach((e, i) => {
+    let tier = 'mid';
+    if (i === 0) tier = 'top';
+    else if (i >= n - bottomCount) tier = 'bottom';
+    tiers.set(e.id, tier);
+  });
+  return tiers;
+}
+
+function sortManagers(managers, key) {
+  const arr = managers.slice();
+  if (key === 'total') {
+    arr.sort((a, b) => b.seasonPoints - a.seasonPoints);
+  } else {
+    arr.sort((a, b) => {
+      const av = a.monthly[key];
+      const bv = b.monthly[key];
+      return (bv == null ? -Infinity : bv) - (av == null ? -Infinity : av);
+    });
+  }
+  return arr;
+}
+
+function populateSortOptions(data) {
+  const validKeys = new Set(['total', ...data.months.map((m) => m.key)]);
+  if (!validKeys.has(sortKey)) sortKey = 'total';
+  sortSelect.innerHTML = '<option value="total">Season total</option>' +
+    data.months.map((m) => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join('');
+  sortSelect.value = sortKey;
+}
+
 function render(data) {
   leagueNameEl.innerHTML = data.league
     ? `<a href="https://draft.premierleague.com/league/${data.league.id}/standings" target="_blank" rel="noopener">${escapeHtml(data.league.name)}</a> &middot; ${data.managers.length} managers`
     : '';
 
   if (!data.months.length) {
+    controls.hidden = true;
     content.innerHTML = '<div class="state">No gameweeks played yet this season.</div>';
     return;
   }
 
-  // per-month min/max for the color scale
-  const ranges = {};
-  for (const m of data.months) {
-    let min = Infinity, max = -Infinity;
-    for (const mgr of data.managers) {
-      const v = mgr.monthly[m.key];
-      if (v == null) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    ranges[m.key] = { min, max };
-  }
+  controls.hidden = false;
+  populateSortOptions(data);
 
-  function stepFor(monthKey, value) {
-    const { min, max } = ranges[monthKey];
-    if (!isFinite(min) || max === min) return Math.floor(SEQ_STEPS.length / 2);
-    const t = (value - min) / (max - min);
-    return Math.min(SEQ_STEPS.length - 1, Math.floor(t * SEQ_STEPS.length));
-  }
+  const tiersByMonth = {};
+  for (const m of data.months) tiersByMonth[m.key] = tiersForMonth(data.managers, m.key);
+
+  const sortedManagers = sortManagers(data.managers, sortKey);
 
   let html = '';
-  html += '<div class="legend"><span>Fewer points</span><span class="ramp">' +
-    SEQ_STEPS.map((s) => `<span style="background:var(${s})"></span>`).join('') +
-    '</span><span>More points (within that month)</span></div>';
+  html += '<div class="legend">' +
+    '<div class="item"><span class="swatch good"></span><span>Top scorer that month</span></div>' +
+    '<div class="item"><span class="swatch critical"></span><span>Bottom two that month</span></div>' +
+    '<div class="item"><span class="swatch mid"></span><span>Everyone else</span></div>' +
+    '</div>';
 
   html += '<div class="table-scroll"><table><thead><tr><th class="col-manager">Team</th>';
-  for (const m of data.months) html += `<th>${m.label}</th>`;
-  html += '<th class="col-total">Total</th></tr></thead><tbody>';
+  for (const m of data.months) html += `<th class="${m.key === sortKey ? 'sorted' : ''}">${m.label}</th>`;
+  html += `<th class="col-total${sortKey === 'total' ? ' sorted' : ''}">Total</th></tr></thead><tbody>`;
 
-  for (const mgr of data.managers) {
-    html += `<tr><td class="col-manager"><span class="rank">${mgr.pointsRank}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
+  sortedManagers.forEach((mgr, i) => {
+    html += `<tr><td class="col-manager"><span class="rank">${i + 1}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
     for (const m of data.months) {
       const v = mgr.monthly[m.key];
-      const winner = data.monthWinners[m.key];
-      const isLeader = winner && winner.leagueEntryId === mgr.leagueEntryId;
       if (v == null) {
         html += '<td class="cell empty">—</td>';
       } else {
-        const step = stepFor(m.key, v);
-        const textColor = step >= DARK_TEXT_FROM_STEP ? '#ffffff' : 'var(--text-primary)';
-        html += `<td class="cell${isLeader ? ' leader' : ''}" style="background:var(${SEQ_STEPS[step]});color:${textColor}">${v}${isLeader ? trophyBadge() : ''}</td>`;
+        const tier = tiersByMonth[m.key].get(mgr.leagueEntryId);
+        const badge = tier === 'top' ? trophyBadge() : tier === 'bottom' ? downBadge() : '';
+        html += `<td class="cell tier-${tier}">${v}${badge}</td>`;
       }
     }
     html += `<td class="col-total">${mgr.seasonPoints}</td></tr>`;
-  }
+  });
   html += '</tbody></table></div>';
 
   content.innerHTML = html;
@@ -238,6 +300,7 @@ async function load(leagueId) {
       input.value = data.league.id;
       setLeagueId(String(data.league.id));
     }
+    currentData = data;
     render(data);
   } catch (err) {
     content.innerHTML = `<div class="state error">Could not reach the server.<div class="detail">${escapeHtml(String(err))}</div></div>`;
@@ -248,6 +311,11 @@ form.addEventListener('submit', (e) => {
   e.preventDefault();
   const id = input.value.trim();
   if (/^\d+$/.test(id)) load(id);
+});
+
+sortSelect.addEventListener('change', () => {
+  sortKey = sortSelect.value;
+  if (currentData) render(currentData);
 });
 
 load(getLeagueId());
