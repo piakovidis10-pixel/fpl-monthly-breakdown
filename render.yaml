@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: fpl-monthly-breakdown
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: FPL_LEAGUE_ID
+        value: "60797"

@@ -28,6 +28,17 @@ into the page. Your league ID is in its URL:
 npm test   # aggregation logic, no network needed
 ```
 
+## Deploying to Render
+
+`render.yaml` is a Render blueprint, so in Render: **New → Blueprint**, point it
+at this repo, and it picks up the build command, start command and default
+league on its own. Change the league later under the service's Environment tab
+(`FPL_LEAGUE_ID`) — no redeploy needed beyond the automatic restart.
+
+Render assigns the port via `PORT`, which the server already reads. On the free
+plan the service sleeps after inactivity, so the first load after a quiet spell
+takes around a minute to wake.
+
 ## How the numbers work
 
 - Points come from the league's own `matches`, so they're the scores the league
