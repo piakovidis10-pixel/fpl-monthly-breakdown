@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>FPL Monthly Breakdown</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --seq-100: #cde2fb; --seq-150: #b7d3f6; --seq-200: #9ec5f4; --seq-250: #86b6ef;
+    --seq-300: #6da7ec; --seq-350: #5598e7; --seq-400: #3987e5; --seq-450: #2a78d6;
+    --seq-500: #256abf; --seq-550: #1c5cab; --seq-600: #184f95; --seq-650: #104281;
+    --seq-700: #0d366b;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --surface-2:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 20px 16px 40px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .league-name { color: var(--text-secondary); font-size: 14px; margin: 0; }
+  .league-name a { color: inherit; }
+
+  form.league-form {
+    display: flex; gap: 8px; margin: 16px 0 4px; flex-wrap: wrap;
+  }
+  form.league-form input {
+    flex: 1 1 180px; min-width: 0;
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 14px;
+  }
+  form.league-form button {
+    background: var(--seq-450); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  form.league-form button:hover { background: var(--seq-550); }
+  .hint { color: var(--text-muted); font-size: 12px; margin: 6px 0 0; }
+
+  .state { padding: 40px 0; text-align: center; color: var(--text-secondary); }
+  .state.error { color: var(--text-primary); }
+  .state .detail { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+
+  .legend { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; color: var(--text-muted); font-size: 12px; }
+  .legend .ramp { display: flex; height: 10px; width: 120px; border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+  .legend .ramp span { flex: 1; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
+  thead th {
+    position: sticky; top: 0; background: var(--surface-1);
+    text-align: right; padding: 10px 12px; font-size: 12px; font-weight: 600;
+    color: var(--text-secondary); border-bottom: 1px solid var(--gridline);
+    white-space: nowrap;
+  }
+  thead th.col-manager { text-align: left; position: sticky; left: 0; z-index: 2; }
+  thead th.col-total { color: var(--text-primary); }
+  tbody td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--gridline); white-space: nowrap; position: relative; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.col-manager {
+    text-align: left; position: sticky; left: 0; background: var(--surface-1); z-index: 1;
+    border-right: 1px solid var(--gridline);
+  }
+  td.col-manager .team { font-weight: 600; }
+  td.col-manager .manager { color: var(--text-muted); font-size: 12px; }
+  .rank {
+    display: inline-block; width: 20px; color: var(--text-muted); font-size: 12px; margin-right: 6px;
+  }
+  td.col-total { font-weight: 700; background: var(--surface-2); border-left: 1px solid var(--gridline); }
+  td.cell { border-radius: 4px; }
+  td.cell .pts { font-weight: 600; }
+  td.cell .rec { font-size: 11px; opacity: 0.85; margin-top: 1px; }
+  td.cell.leader { box-shadow: inset 0 0 0 2px var(--text-primary); border-radius: 6px; }
+  td.cell .badge {
+    position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
+    opacity: 0.85;
+  }
+  td.cell.empty { color: var(--text-muted); }
+
+  footer { margin-top: 18px; color: var(--text-muted); font-size: 12px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FPL Monthly Breakdown</h1>
+    <p class="league-name" id="league-name">Loading league…</p>
+  </header>
+
+  <form class="league-form" id="league-form">
+    <input type="text" inputmode="numeric" id="league-input" placeholder="Draft league ID, e.g. 60797" />
+    <button type="submit">Load</button>
+  </form>
+  <p class="hint">Find your league ID in its URL: draft.premierleague.com/league/<strong>12345</strong>/standings</p>
+
+  <div id="content"></div>
+
+  <footer>
+    Gameweeks are grouped by the calendar month their deadline fell in; only finished gameweeks count.
+    Data via the public <a href="https://draft.premierleague.com/" target="_blank" rel="noopener">FPL Draft API</a>, cached for a few minutes.
+  </footer>
+</div>
+
+<script>
+const content = document.getElementById('content');
+const leagueNameEl = document.getElementById('league-name');
+const form = document.getElementById('league-form');
+const input = document.getElementById('league-input');
+
+const SEQ_STEPS = ['--seq-150', '--seq-250', '--seq-350', '--seq-450', '--seq-550', '--seq-650'];
+const DARK_TEXT_FROM_STEP = 3; // steps[3..] (450+) get white text
+
+function getLeagueId() {
+  const url = new URL(window.location.href);
+  return url.searchParams.get('league') || localStorage.getItem('fpl-league-id') || '';
+}
+
+function setLeagueId(id) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('league', id);
+  window.history.replaceState({}, '', url);
+  localStorage.setItem('fpl-league-id', id);
+}
+
+function trophyBadge() {
+  return '<svg class="badge" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<path d="M6 4h12v3a6 6 0 0 1-12 0V4z" stroke="currentColor" stroke-width="1.6"/>' +
+    '<path d="M6 5H3v2a3 3 0 0 0 3 3M18 5h3v2a3 3 0 0 1-3 3" stroke="currentColor" stroke-width="1.6"/>' +
+    '<path d="M12 13v3M9 19h6M10 16h4v3h-4z" stroke="currentColor" stroke-width="1.6"/>' +
+    '</svg>';
+}
+
+function render(data) {
+  leagueNameEl.innerHTML = data.league
+    ? `<a href="https://draft.premierleague.com/league/${data.league.id}/standings" target="_blank" rel="noopener">${escapeHtml(data.league.name)}</a> &middot; ${data.managers.length} managers`
+    : '';
+
+  if (!data.months.length) {
+    content.innerHTML = '<div class="state">No gameweeks played yet this season.</div>';
+    return;
+  }
+
+  // per-month min/max for the color scale
+  const ranges = {};
+  for (const m of data.months) {
+    let min = Infinity, max = -Infinity;
+    for (const mgr of data.managers) {
+      const cell = mgr.monthly[m.key];
+      if (!cell) continue;
+      if (cell.points < min) min = cell.points;
+      if (cell.points > max) max = cell.points;
+    }
+    ranges[m.key] = { min, max };
+  }
+
+  function stepFor(monthKey, value) {
+    const { min, max } = ranges[monthKey];
+    if (!isFinite(min) || max === min) return Math.floor(SEQ_STEPS.length / 2);
+    const t = (value - min) / (max - min);
+    return Math.min(SEQ_STEPS.length - 1, Math.floor(t * SEQ_STEPS.length));
+  }
+
+  let html = '';
+  html += '<div class="legend"><span>Fewer points</span><span class="ramp">' +
+    SEQ_STEPS.map((s) => `<span style="background:var(${s})"></span>`).join('') +
+    '</span><span>More points (within that month)</span></div>';
+
+  const h2h = data.isHeadToHead;
+
+  html += '<div class="table-scroll"><table><thead><tr><th class="col-manager">Team</th>';
+  for (const m of data.months) html += `<th>${m.label}</th>`;
+  html += '<th class="col-total">Total</th>';
+  if (h2h) html += '<th>Record</th><th>Lg pts</th>';
+  html += '</tr></thead><tbody>';
+
+  for (const mgr of data.managers) {
+    html += `<tr><td class="col-manager"><span class="rank">${mgr.pointsRank}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
+    for (const m of data.months) {
+      const cell = mgr.monthly[m.key];
+      const winner = data.monthWinners[m.key];
+      const isLeader = winner && winner.leagueEntryId === mgr.leagueEntryId;
+      if (!cell) {
+        html += '<td class="cell empty">—</td>';
+      } else {
+        const step = stepFor(m.key, cell.points);
+        const textColor = step >= DARK_TEXT_FROM_STEP ? '#ffffff' : 'var(--text-primary)';
+        const rec = h2h ? `<div class="rec">${cell.won}-${cell.drawn}-${cell.lost}</div>` : '';
+        html += `<td class="cell${isLeader ? ' leader' : ''}" style="background:var(${SEQ_STEPS[step]});color:${textColor}"><div class="pts">${cell.points}</div>${rec}${isLeader ? trophyBadge() : ''}</td>`;
+      }
+    }
+    html += `<td class="col-total">${mgr.seasonPoints}</td>`;
+    if (h2h) {
+      html += `<td>${mgr.record.won}-${mgr.record.drawn}-${mgr.record.lost}</td><td>${mgr.leaguePoints == null ? '—' : mgr.leaguePoints}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  if (h2h) {
+    html += '<p class="hint">Rows are ordered by total points scored. <strong>Record</strong> is W-D-L and <strong>Lg pts</strong> is your head-to-head league table points, which can tell a different story.</p>';
+  }
+
+  content.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+async function load(leagueId) {
+  if (leagueId) input.value = leagueId;
+  leagueNameEl.textContent = 'Loading league…';
+  content.innerHTML = '<div class="state">Fetching the league&rsquo;s gameweek results…</div>';
+  try {
+    // With no league id the server falls back to its configured default
+    const res = await fetch(leagueId ? `/api/monthly?league=${encodeURIComponent(leagueId)}` : '/api/monthly');
+    const data = await res.json();
+    if (!res.ok) {
+      content.innerHTML = `<div class="state error">${escapeHtml(data.error || 'Something went wrong')}<div class="detail">${escapeHtml(data.detail || '')}</div></div>`;
+      leagueNameEl.textContent = '';
+      return;
+    }
+    if (data.league) {
+      input.value = data.league.id;
+      setLeagueId(String(data.league.id));
+    }
+    render(data);
+  } catch (err) {
+    content.innerHTML = `<div class="state error">Could not reach the server.<div class="detail">${escapeHtml(String(err))}</div></div>`;
+  }
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const id = input.value.trim();
+  if (/^\d+$/.test(id)) load(id);
+});
+
+load(getLeagueId());
+</script>
+</body>
+</html>
