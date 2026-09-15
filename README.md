@@ -42,9 +42,15 @@ takes around a minute to wake.
   `entry/{id}/history` endpoint — the same fully-computed scores (bonus points,
   auto-subs and all) the league itself was decided on, no reimplementing of
   FPL's scoring engine.
-- A gameweek belongs to the month its deadline fell in (UTC), so a gameweek
-  whose deadline is late in one month counts for that month even if matches
-  played out into the next.
+- A gameweek belongs to the month its deadline fell in (UTC) — the deadline is
+  effectively when the gameweek starts. So a gameweek that spans a weekend
+  crossing a month boundary (deadline Friday in August, matches running into
+  the following Monday in September) counts *entirely* for the month it
+  started in; nothing is split across months.
+- Data isn't pushed live — it's fetched on request and cached for 5 minutes
+  (30 minutes for gameweek deadline dates, which barely change), so a page
+  load is never more than a few minutes stale but nothing updates itself in
+  the background while the tab is closed.
 - The colour scale is normalized **per month**, not across the whole table —
   that's what makes a strong month visible even for a manager who is mid-table
   overall.
