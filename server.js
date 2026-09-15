@@ -6,6 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DEFAULT_LEAGUE_ID = process.env.FPL_LEAGUE_ID || '60797';
 const DRAFT_API = 'https://draft.premierleague.com/api';
+const FETCH_CONCURRENCY = 8;
 
 const cache = new Map();
 function cacheGet(key, ttlMs) {
@@ -56,6 +57,30 @@ async function getLeagueDetails(leagueId) {
   return data;
 }
 
+async function getEntryHistory(entryId) {
+  const cacheKey = `history:${entryId}`;
+  const cached = cacheGet(cacheKey, 5 * 60 * 1000);
+  if (cached) return cached;
+  const data = await fetchJson(`${DRAFT_API}/entry/${entryId}/history`);
+  const history = expect(data.history, `no history in entry ${entryId}'s history response`, data);
+  cacheSet(cacheKey, history);
+  return history;
+}
+
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/monthly', async (req, res) => {
@@ -66,12 +91,19 @@ app.get('/api/monthly', async (req, res) => {
 
   try {
     const [events, details] = await Promise.all([getEvents(), getLeagueDetails(leagueId)]);
+    const leagueEntries = expect(details.league_entries, 'no league_entries in league details', details);
+
+    const histories = await mapLimit(leagueEntries, FETCH_CONCURRENCY, async (le) => {
+      const history = await getEntryHistory(le.entry_id);
+      return [le.entry_id, history];
+    });
+    const historyByEntry = new Map(histories);
 
     res.json(
       buildMonthlyBreakdown({
         events,
-        leagueEntries: expect(details.league_entries, 'no league_entries in league details', details),
-        matches: expect(details.matches, 'no matches in league details', details),
+        leagueEntries,
+        historyByEntry,
         standings: details.standings,
         leagueMeta: details.league,
       })

@@ -96,8 +96,6 @@
   }
   td.col-total { font-weight: 700; background: var(--surface-2); border-left: 1px solid var(--gridline); }
   td.cell { border-radius: 4px; }
-  td.cell .pts { font-weight: 600; }
-  td.cell .rec { font-size: 11px; opacity: 0.85; margin-top: 1px; }
   td.cell.leader { box-shadow: inset 0 0 0 2px var(--text-primary); border-radius: 6px; }
   td.cell .badge {
     position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
@@ -174,10 +172,10 @@ function render(data) {
   for (const m of data.months) {
     let min = Infinity, max = -Infinity;
     for (const mgr of data.managers) {
-      const cell = mgr.monthly[m.key];
-      if (!cell) continue;
-      if (cell.points < min) min = cell.points;
-      if (cell.points > max) max = cell.points;
+      const v = mgr.monthly[m.key];
+      if (v == null) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
     }
     ranges[m.key] = { min, max };
   }
@@ -194,39 +192,27 @@ function render(data) {
     SEQ_STEPS.map((s) => `<span style="background:var(${s})"></span>`).join('') +
     '</span><span>More points (within that month)</span></div>';
 
-  const h2h = data.isHeadToHead;
-
   html += '<div class="table-scroll"><table><thead><tr><th class="col-manager">Team</th>';
   for (const m of data.months) html += `<th>${m.label}</th>`;
-  html += '<th class="col-total">Total</th>';
-  if (h2h) html += '<th>Record</th><th>Lg pts</th>';
-  html += '</tr></thead><tbody>';
+  html += '<th class="col-total">Total</th></tr></thead><tbody>';
 
   for (const mgr of data.managers) {
     html += `<tr><td class="col-manager"><span class="rank">${mgr.pointsRank}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
     for (const m of data.months) {
-      const cell = mgr.monthly[m.key];
+      const v = mgr.monthly[m.key];
       const winner = data.monthWinners[m.key];
       const isLeader = winner && winner.leagueEntryId === mgr.leagueEntryId;
-      if (!cell) {
+      if (v == null) {
         html += '<td class="cell empty">—</td>';
       } else {
-        const step = stepFor(m.key, cell.points);
+        const step = stepFor(m.key, v);
         const textColor = step >= DARK_TEXT_FROM_STEP ? '#ffffff' : 'var(--text-primary)';
-        const rec = h2h ? `<div class="rec">${cell.won}-${cell.drawn}-${cell.lost}</div>` : '';
-        html += `<td class="cell${isLeader ? ' leader' : ''}" style="background:var(${SEQ_STEPS[step]});color:${textColor}"><div class="pts">${cell.points}</div>${rec}${isLeader ? trophyBadge() : ''}</td>`;
+        html += `<td class="cell${isLeader ? ' leader' : ''}" style="background:var(${SEQ_STEPS[step]});color:${textColor}">${v}${isLeader ? trophyBadge() : ''}</td>`;
       }
     }
-    html += `<td class="col-total">${mgr.seasonPoints}</td>`;
-    if (h2h) {
-      html += `<td>${mgr.record.won}-${mgr.record.drawn}-${mgr.record.lost}</td><td>${mgr.leaguePoints == null ? '—' : mgr.leaguePoints}</td>`;
-    }
-    html += '</tr>';
+    html += `<td class="col-total">${mgr.seasonPoints}</td></tr>`;
   }
   html += '</tbody></table></div>';
-  if (h2h) {
-    html += '<p class="hint">Rows are ordered by total points scored. <strong>Record</strong> is W-D-L and <strong>Lg pts</strong> is your head-to-head league table points, which can tell a different story.</p>';
-  }
 
   content.innerHTML = html;
 }

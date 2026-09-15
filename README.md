@@ -3,14 +3,11 @@
 See which manager in your **FPL Draft** league has actually performed month by
 month, rather than only across the season as a whole.
 
-It pulls your league from the public Draft API, groups gameweeks by the calendar
-month their deadline fell in, and renders a heatmap: rows are managers, columns
-are months, each cell shaded by how that manager's points compare to the rest of
-the league *that month*. The month's top scorer gets a trophy badge.
-
-For head-to-head leagues each cell also carries that month's W-D-L, with season
-`Record` and `Lg pts` columns at the end — so you can see who scored heaviest
-versus who actually banked the league points.
+It pulls your league and every manager's gameweek-by-gameweek score from the
+public Draft API, groups gameweeks by the calendar month their deadline fell
+in, and renders a heatmap: rows are managers, columns are months, each cell
+shaded by how that manager's points compare to the rest of the league *that
+month*. The month's top scorer gets a trophy badge.
 
 ## Running it
 
@@ -41,24 +38,23 @@ takes around a minute to wake.
 
 ## How the numbers work
 
-- Points come from the league's own `matches`, so they're the scores the league
-  was actually decided on.
-- Only **finished** gameweeks count. Draft schedules every fixture up front, so
-  counting unfinished ones would pull a month's average down with zeroes.
-- A gameweek belongs to the month its deadline fell in (UTC), so a gameweek that
-  kicks off in one month and finishes in the next counts for the month it
-  started.
+- Each manager's per-gameweek points come straight from the Draft API's
+  `entry/{id}/history` endpoint — the same fully-computed scores (bonus points,
+  auto-subs and all) the league itself was decided on, no reimplementing of
+  FPL's scoring engine.
+- A gameweek belongs to the month its deadline fell in (UTC), so a gameweek
+  whose deadline is late in one month counts for that month even if matches
+  played out into the next.
 - The colour scale is normalized **per month**, not across the whole table —
   that's what makes a strong month visible even for a manager who is mid-table
   overall.
+- One request fans out to one `history` call per manager (capped implicitly by
+  league size — Draft leagues are small), run with limited concurrency and
+  cached for 5 minutes so refreshing the page doesn't re-hammer the API.
 
 ## Notes
 
-- Built against the Draft API's documented shapes but **not run against the live
-  API** — the sandbox it was written in had no outbound access to
-  `draft.premierleague.com`. The aggregation logic is unit-tested and the UI was
-  rendered against mocked responses; if a response shape differs, the server
-  reports what it actually received instead of throwing.
-- The Draft API sends no CORS headers, so the browser can't call it directly.
-  Hence the small Express backend, which also caches (30 min for gameweek
-  metadata, 5 min for league data) to stay polite.
+- The Draft API sends no CORS headers, so the browser can't call it directly —
+  hence the small Express backend doing the fetching and caching server-side.
+- If a Draft API response shape ever changes, the server reports the keys it
+  actually received instead of throwing a generic error.
