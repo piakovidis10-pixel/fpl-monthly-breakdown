@@ -7,5 +7,7 @@ services:
     startCommand: npm start
     healthCheckPath: /
     envVars:
-      - key: FPL_LEAGUE_ID
+      - key: FPL_DRAFT_LEAGUE_ID
         value: "60797"
+      - key: FPL_CLASSIC_LEAGUE_ID
+        value: "935581"

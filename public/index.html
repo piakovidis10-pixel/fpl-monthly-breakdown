@@ -46,10 +46,21 @@
     padding: 20px 16px 40px;
   }
   .wrap { max-width: 980px; margin: 0 auto; }
-  header { margin-bottom: 20px; }
+  header { margin-bottom: 16px; }
   h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
   .league-name { color: var(--text-secondary); font-size: 14px; margin: 0; }
   .league-name a { color: inherit; }
+
+  .tabs { display: flex; gap: 18px; margin: 4px 0 18px; border-bottom: 1px solid var(--gridline); }
+  .tab-btn {
+    background: transparent; border: none; cursor: pointer; appearance: none;
+    padding: 8px 2px 10px; margin-bottom: -1px;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { color: var(--text-primary); }
+  .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--seq-450); }
+  .panel[hidden] { display: none; }
 
   form.league-form {
     display: flex; gap: 8px; margin: 16px 0 4px; flex-wrap: wrap;
@@ -127,53 +138,50 @@
 <div class="wrap">
   <header>
     <h1>FPL Monthly Breakdown</h1>
-    <p class="league-name" id="league-name">Loading league…</p>
   </header>
 
-  <form class="league-form" id="league-form">
-    <input type="text" inputmode="numeric" id="league-input" placeholder="Draft league ID, e.g. 60797" />
-    <button type="submit">Load</button>
-  </form>
-  <p class="hint">Find your league ID in its URL: draft.premierleague.com/league/<strong>12345</strong>/standings</p>
-
-  <div class="controls" id="controls" hidden>
-    <label for="sort-select">Rank teams by</label>
-    <select id="sort-select">
-      <option value="total">Season total</option>
-    </select>
+  <div class="tabs" role="tablist">
+    <button class="tab-btn" data-tab="draft" role="tab">Draft League</button>
+    <button class="tab-btn" data-tab="classic" role="tab">Classic League</button>
   </div>
 
-  <div id="content"></div>
+  <section class="panel" data-panel="draft">
+    <p class="league-name" id="league-name-draft">Loading league…</p>
+    <form class="league-form" id="league-form-draft">
+      <input type="text" inputmode="numeric" id="league-input-draft" placeholder="Draft league ID, e.g. 60797" />
+      <button type="submit">Load</button>
+    </form>
+    <p class="hint">Find your league ID in its URL: draft.premierleague.com/league/<strong>12345</strong>/standings</p>
+    <div class="controls" id="controls-draft" hidden>
+      <label for="sort-select-draft">Rank teams by</label>
+      <select id="sort-select-draft"><option value="total">Season total</option></select>
+    </div>
+    <div id="content-draft"></div>
+  </section>
+
+  <section class="panel" data-panel="classic" hidden>
+    <p class="league-name" id="league-name-classic">Loading league…</p>
+    <form class="league-form" id="league-form-classic">
+      <input type="text" inputmode="numeric" id="league-input-classic" placeholder="Classic league ID, e.g. 935581" />
+      <button type="submit">Load</button>
+    </form>
+    <p class="hint">Find your league ID in its URL: fantasy.premierleague.com/leagues/<strong>12345</strong>/standings/c</p>
+    <div class="controls" id="controls-classic" hidden>
+      <label for="sort-select-classic">Rank teams by</label>
+      <select id="sort-select-classic"><option value="total">Season total</option></select>
+    </div>
+    <div id="content-classic"></div>
+  </section>
 
   <footer>
     Gameweeks are grouped by the calendar month their deadline fell in; only finished gameweeks count.
-    Data via the public <a href="https://draft.premierleague.com/" target="_blank" rel="noopener">FPL Draft API</a>, cached for a few minutes.
+    Draft data via the public <a href="https://draft.premierleague.com/" target="_blank" rel="noopener">FPL Draft API</a>;
+    classic data via the public <a href="https://fantasy.premierleague.com/" target="_blank" rel="noopener">FPL API</a>.
+    Both cached for a few minutes.
   </footer>
 </div>
 
 <script>
-const content = document.getElementById('content');
-const leagueNameEl = document.getElementById('league-name');
-const form = document.getElementById('league-form');
-const input = document.getElementById('league-input');
-const controls = document.getElementById('controls');
-const sortSelect = document.getElementById('sort-select');
-
-let currentData = null;
-let sortKey = 'total';
-
-function getLeagueId() {
-  const url = new URL(window.location.href);
-  return url.searchParams.get('league') || localStorage.getItem('fpl-league-id') || '';
-}
-
-function setLeagueId(id) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('league', id);
-  window.history.replaceState({}, '', url);
-  localStorage.setItem('fpl-league-id', id);
-}
-
 function trophyBadge() {
   return '<svg class="badge" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
     '<path d="M6 4h12v3a6 6 0 0 1-12 0V4z" stroke="currentColor" stroke-width="1.6"/>' +
@@ -186,6 +194,10 @@ function downBadge() {
   return '<svg class="badge" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
     '<path d="M12 5v11M7 12l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
     '</svg>';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 // Rank every manager within a single month's points and bucket into
@@ -222,103 +234,161 @@ function sortManagers(managers, key) {
   return arr;
 }
 
-function populateSortOptions(data) {
-  const validKeys = new Set(['total', ...data.months.map((m) => m.key)]);
-  if (!validKeys.has(sortKey)) sortKey = 'total';
-  sortSelect.innerHTML = '<option value="total">Season total</option>' +
-    data.months.map((m) => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join('');
-  sortSelect.value = sortKey;
-}
+// One instance of this wires up a whole tab (its own form, sort control,
+// table and state) against one API endpoint. The two tabs are otherwise
+// identical UI over differently-shaped leagues, so nothing else differs.
+function createPanel(cfg) {
+  const leagueNameEl = document.getElementById(`league-name-${cfg.key}`);
+  const form = document.getElementById(`league-form-${cfg.key}`);
+  const input = document.getElementById(`league-input-${cfg.key}`);
+  const controls = document.getElementById(`controls-${cfg.key}`);
+  const sortSelect = document.getElementById(`sort-select-${cfg.key}`);
+  const content = document.getElementById(`content-${cfg.key}`);
 
-function render(data) {
-  leagueNameEl.innerHTML = data.league
-    ? `<a href="https://draft.premierleague.com/league/${data.league.id}/standings" target="_blank" rel="noopener">${escapeHtml(data.league.name)}</a> &middot; ${data.managers.length} managers`
-    : '';
+  const storageKey = `fpl-${cfg.key}-league-id`;
+  const queryKey = `${cfg.key}League`;
+  let currentData = null;
+  let sortKey = 'total';
 
-  if (!data.months.length) {
-    controls.hidden = true;
-    content.innerHTML = '<div class="state">No gameweeks played yet this season.</div>';
-    return;
+  function getLeagueId() {
+    const url = new URL(window.location.href);
+    return url.searchParams.get(queryKey) || localStorage.getItem(storageKey) || '';
   }
 
-  controls.hidden = false;
-  populateSortOptions(data);
+  function setLeagueId(id) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(queryKey, id);
+    window.history.replaceState({}, '', url);
+    localStorage.setItem(storageKey, id);
+  }
 
-  const tiersByMonth = {};
-  for (const m of data.months) tiersByMonth[m.key] = tiersForMonth(data.managers, m.key);
+  function populateSortOptions(data) {
+    const validKeys = new Set(['total', ...data.months.map((m) => m.key)]);
+    if (!validKeys.has(sortKey)) sortKey = 'total';
+    sortSelect.innerHTML = '<option value="total">Season total</option>' +
+      data.months.map((m) => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join('');
+    sortSelect.value = sortKey;
+  }
 
-  const sortedManagers = sortManagers(data.managers, sortKey);
+  function render(data) {
+    leagueNameEl.innerHTML = data.league
+      ? `<a href="${cfg.standingsUrl(data.league.id)}" target="_blank" rel="noopener">${escapeHtml(data.league.name)}</a> &middot; ${data.managers.length} managers`
+      : '';
 
-  let html = '';
-  html += '<div class="legend">' +
-    '<div class="item"><span class="swatch good"></span><span>Top scorer that month</span></div>' +
-    '<div class="item"><span class="swatch critical"></span><span>Bottom two that month</span></div>' +
-    '<div class="item"><span class="swatch mid"></span><span>Everyone else</span></div>' +
-    '</div>';
-
-  html += '<div class="table-scroll"><table><thead><tr><th class="col-manager">Team</th>';
-  for (const m of data.months) html += `<th class="${m.key === sortKey ? 'sorted' : ''}">${m.label}</th>`;
-  html += `<th class="col-total${sortKey === 'total' ? ' sorted' : ''}">Total</th></tr></thead><tbody>`;
-
-  sortedManagers.forEach((mgr, i) => {
-    html += `<tr><td class="col-manager"><span class="rank">${i + 1}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
-    for (const m of data.months) {
-      const v = mgr.monthly[m.key];
-      if (v == null) {
-        html += '<td class="cell empty">—</td>';
-      } else {
-        const tier = tiersByMonth[m.key].get(mgr.leagueEntryId);
-        const badge = tier === 'top' ? trophyBadge() : tier === 'bottom' ? downBadge() : '';
-        html += `<td class="cell tier-${tier}">${v}${badge}</td>`;
-      }
-    }
-    html += `<td class="col-total">${mgr.seasonPoints}</td></tr>`;
-  });
-  html += '</tbody></table></div>';
-
-  content.innerHTML = html;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-async function load(leagueId) {
-  if (leagueId) input.value = leagueId;
-  leagueNameEl.textContent = 'Loading league…';
-  content.innerHTML = '<div class="state">Fetching the league&rsquo;s gameweek results…</div>';
-  try {
-    // With no league id the server falls back to its configured default
-    const res = await fetch(leagueId ? `/api/monthly?league=${encodeURIComponent(leagueId)}` : '/api/monthly');
-    const data = await res.json();
-    if (!res.ok) {
-      content.innerHTML = `<div class="state error">${escapeHtml(data.error || 'Something went wrong')}<div class="detail">${escapeHtml(data.detail || '')}</div></div>`;
-      leagueNameEl.textContent = '';
+    if (!data.months.length) {
+      controls.hidden = true;
+      content.innerHTML = '<div class="state">No gameweeks played yet this season.</div>';
       return;
     }
-    if (data.league) {
-      input.value = data.league.id;
-      setLeagueId(String(data.league.id));
-    }
-    currentData = data;
-    render(data);
-  } catch (err) {
-    content.innerHTML = `<div class="state error">Could not reach the server.<div class="detail">${escapeHtml(String(err))}</div></div>`;
+
+    controls.hidden = false;
+    populateSortOptions(data);
+
+    const tiersByMonth = {};
+    for (const m of data.months) tiersByMonth[m.key] = tiersForMonth(data.managers, m.key);
+
+    const sortedManagers = sortManagers(data.managers, sortKey);
+
+    let html = '';
+    html += '<div class="legend">' +
+      '<div class="item"><span class="swatch good"></span><span>Top scorer that month</span></div>' +
+      '<div class="item"><span class="swatch critical"></span><span>Bottom two that month</span></div>' +
+      '<div class="item"><span class="swatch mid"></span><span>Everyone else</span></div>' +
+      '</div>';
+
+    html += '<div class="table-scroll"><table><thead><tr><th class="col-manager">Team</th>';
+    for (const m of data.months) html += `<th class="${m.key === sortKey ? 'sorted' : ''}">${m.label}</th>`;
+    html += `<th class="col-total${sortKey === 'total' ? ' sorted' : ''}">Total</th></tr></thead><tbody>`;
+
+    sortedManagers.forEach((mgr, i) => {
+      html += `<tr><td class="col-manager"><span class="rank">${i + 1}</span><span class="team">${escapeHtml(mgr.teamName)}</span><br><span class="manager">${escapeHtml(mgr.managerName)}</span></td>`;
+      for (const m of data.months) {
+        const v = mgr.monthly[m.key];
+        if (v == null) {
+          html += '<td class="cell empty">—</td>';
+        } else {
+          const tier = tiersByMonth[m.key].get(mgr.leagueEntryId);
+          const badge = tier === 'top' ? trophyBadge() : tier === 'bottom' ? downBadge() : '';
+          html += `<td class="cell tier-${tier}">${v}${badge}</td>`;
+        }
+      }
+      html += `<td class="col-total">${mgr.seasonPoints}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    content.innerHTML = html;
   }
+
+  async function load(leagueId) {
+    if (leagueId) input.value = leagueId;
+    leagueNameEl.textContent = 'Loading league…';
+    content.innerHTML = '<div class="state">Fetching the league&rsquo;s gameweek results…</div>';
+    try {
+      // With no league id the server falls back to its configured default
+      const res = await fetch(leagueId ? `${cfg.apiPath}?league=${encodeURIComponent(leagueId)}` : cfg.apiPath);
+      const data = await res.json();
+      if (!res.ok) {
+        content.innerHTML = `<div class="state error">${escapeHtml(data.error || 'Something went wrong')}<div class="detail">${escapeHtml(data.detail || '')}</div></div>`;
+        leagueNameEl.textContent = '';
+        return;
+      }
+      if (data.league) {
+        input.value = data.league.id;
+        setLeagueId(String(data.league.id));
+      }
+      currentData = data;
+      render(data);
+    } catch (err) {
+      content.innerHTML = `<div class="state error">Could not reach the server.<div class="detail">${escapeHtml(String(err))}</div></div>`;
+    }
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = input.value.trim();
+    if (/^\d+$/.test(id)) load(id);
+  });
+
+  sortSelect.addEventListener('change', () => {
+    sortKey = sortSelect.value;
+    if (currentData) render(currentData);
+  });
+
+  return { load: () => load(getLeagueId()) };
 }
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const id = input.value.trim();
-  if (/^\d+$/.test(id)) load(id);
-});
+const panels = {
+  draft: createPanel({
+    key: 'draft',
+    apiPath: '/api/draft/monthly',
+    standingsUrl: (id) => `https://draft.premierleague.com/league/${id}/standings`,
+  }),
+  classic: createPanel({
+    key: 'classic',
+    apiPath: '/api/classic/monthly',
+    standingsUrl: (id) => `https://fantasy.premierleague.com/leagues/${id}/standings/c`,
+  }),
+};
 
-sortSelect.addEventListener('change', () => {
-  sortKey = sortSelect.value;
-  if (currentData) render(currentData);
-});
+const tabButtons = document.querySelectorAll('.tab-btn');
+const panelEls = document.querySelectorAll('.panel');
 
-load(getLeagueId());
+function activateTab(key) {
+  tabButtons.forEach((b) => b.classList.toggle('active', b.dataset.tab === key));
+  panelEls.forEach((p) => { p.hidden = p.dataset.panel !== key; });
+  localStorage.setItem('fpl-active-tab', key);
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', key);
+  window.history.replaceState({}, '', url);
+}
+
+tabButtons.forEach((b) => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+
+const initialTab = new URL(window.location.href).searchParams.get('tab') || localStorage.getItem('fpl-active-tab');
+activateTab(initialTab === 'classic' ? 'classic' : 'draft');
+
+panels.draft.load();
+panels.classic.load();
 </script>
 </body>
 </html>
